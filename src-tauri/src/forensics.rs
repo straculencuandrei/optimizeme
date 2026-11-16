@@ -1027,9 +1027,17 @@ fn scan_installed_apps_windows(
         };
 
         let verdict = if let Some(loc) = loc.as_ref().filter(|p| p.exists()) {
+            // Prefer the app's own executable (DisplayIcon / UninstallString) so "Reveal" and
+            // launch-history matching target the real binary, even when InstallLocation is a
+            // shared root such as a Steam library.
+            let exe = icon
+                .as_ref()
+                .filter(|p| p.exists())
+                .cloned()
+                .or_else(|| unins_exe.as_ref().filter(|p| p.exists()).cloned());
             Verdict::Alive {
                 dir: Some(loc.clone()),
-                exe: None,
+                exe,
             }
         } else if let Some(icon) = icon.as_ref().filter(|p| p.exists()) {
             Verdict::Alive {

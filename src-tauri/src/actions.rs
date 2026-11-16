@@ -31,7 +31,10 @@ pub fn reveal_in_explorer(path: &str) -> Result<(), String> {
         if p.is_dir() {
             cmd.arg(&target);
         } else {
-            cmd.arg(format!("/select,{}", target));
+            // Quote the path inside the /select, switch. Without the inner quotes, paths that
+            // contain spaces (e.g. "Program Files (x86)") are mis-parsed and Explorer silently
+            // falls back to a default folder such as Documents.
+            cmd.arg(format!("/select,\"{}\"", target));
         }
         cmd.spawn()
             .map_err(|e| format!("Failed to launch Explorer: {}", e))?;
