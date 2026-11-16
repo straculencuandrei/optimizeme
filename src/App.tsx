@@ -10,6 +10,8 @@ import {
   FilePreviewInfo,
   FileRecord,
   ForensicsScanResult,
+  Insight,
+  InsightReport,
   NavTab,
   QuickCleanScanResult,
   ScanProgressEvent,
@@ -21,6 +23,7 @@ import { QuickCleanView } from "./components/QuickCleanView";
 import { ForensicsView } from "./components/ForensicsView";
 import { AppsTrackerView } from "./components/AppsTrackerView";
 import { WhitelistView } from "./components/WhitelistView";
+import { InsightsView } from "./components/InsightsView";
 import { QuickLookModal } from "./components/QuickLookModal";
 import { formatBytes } from "./utils/format";
 
@@ -61,6 +64,13 @@ export function App() {
 
   // WizTree (MFT turbo scan) availability
   const [wiztreePath, setWiztreePath] = useState<string | null>(null);
+
+  // Insights / recommendations state
+  const [insightReport, setInsightReport] = useState<InsightReport | null>(null);
+  const [isInsightsScanning, setIsInsightsScanning] = useState(false);
+  const [applyingInsightIds, setApplyingInsightIds] = useState<Set<string>>(
+    new Set()
+  );
 
   // Whitelist state
   const [whitelist, setWhitelist] = useState<WhitelistConfig>({
@@ -333,6 +343,25 @@ export function App() {
     [minSizeBytes, pushToast]
   );
 
+  const handleRunInsights = useCallback(async () => {
+    setIsInsightsScanning(true);
+    setInsightReport(null);
+    try {
+      const report = await api.generateInsights();
+      setInsightReport(report);
+      pushToast(
+        "success",
+        `Generated ${report.insights.length} recommendations (${formatBytes(
+          report.totalReclaimableBytes
+        )} reclaimable).`
+      );
+    } catch (err) {
+      pushToast("error", `Insights failed: ${String(err)}`);
+    } finally {
+      setIsInsightsScanning(false);
+    }
+  }, [pushToast]);
+
   // Actions
   const handleQuickLook = useCallback(async (file: FileRecord) => {
     setPreviewFile(file);
@@ -443,6 +472,82 @@ export function App() {
     [permanentShred, executeDeletion]
   );
 
+  // Apply a batch of insights (files, junk categories, and orphan registry entries).
+  const applyInsights = useCallback(
+    async (list: Insight[]) => {
+      if (list.length === 0) return;
+      const files = list
+        .filter((i) => i.action === "delete_file" && i.path)
+        .map((i) => i.path as string);
+      const orphanKeys = list
+        .filter((i) => i.action === "remove_registry_entry" && i.registryPath)
+        .map((i) => i.registryPath as string);
+      const junkIds = list
+        .filter((i) => i.action === "clean_junk" && i.categoryId)
+        .map((i) => i.categoryId as string);
+
+      setApplyingInsightIds(new Set(list.map((i) => i.id)));
+      try {
+        if (files.length > 0) await executeDeletion(files, permanentShred);
+        if (orphanKeys.length > 0) await handleCleanupOrphans(orphanKeys);
+        if (junkIds.length > 0) {
+          const res = await api.scanQuickClean();
+          const items: CleanRequestItem[] = res.categories
+            .filter((c) => junkIds.includes(c.id))
+            .map((c) => ({
+              categoryId: c.id,
+              targetPaths: c.targetPaths,
+              includeCookies: false,
+              cookiePaths: c.cookiePaths,
+              isRecycleBin: c.isRecycleBin,
+            }));
+          if (items.length > 0) {
+            const r = await api.executeQuickClean(items);
+            setSessionFreedBytes((s) => s + r.freedBytes);
+            pushToast(
+              "success",
+              `Cleaned ${items.length} junk ${
+                items.length === 1 ? "category" : "categories"
+              } (${formatBytes(r.freedBytes)} reclaimed).`
+            );
+          }
+        }
+        const applied = new Set(list.map((i) => i.id));
+        setInsightReport((prev) =>
+          prev
+            ? {
+                ...prev,
+                insights: prev.insights.filter((i) => !applied.has(i.id)),
+              }
+            : prev
+        );
+      } catch (err) {
+        pushToast("error", String(err));
+      } finally {
+        setApplyingInsightIds((prev) => {
+          const next = new Set(prev);
+          list.forEach((i) => next.delete(i.id));
+          return next;
+        });
+      }
+    },
+    [permanentShred, executeDeletion, handleCleanupOrphans, pushToast]
+  );
+
+  const handleApplyInsight = useCallback(
+    (insight: Insight) => {
+      applyInsights([insight]);
+    },
+    [applyInsights]
+  );
+
+  const handleApplyAllInsights = useCallback(() => {
+    if (!insightReport) return;
+    applyInsights(
+      insightReport.insights.filter((i) => i.disposition === "remove")
+    );
+  }, [insightReport, applyInsights]);
+
   // Total Reclaimable calculation for TopBar
   const totalReclaimable = useMemo(() => {
     const quickBytes = quickResult?.totalReclaimableBytes ?? 0;
@@ -453,14 +558,19 @@ export function App() {
         .filter((a) => a.isBloatedUnused)
         .reduce((s, a) => s + a.estimatedSizeBytes, 0);
     }
+    if (activeTab === "insights") {
+      return insightReport?.totalReclaimableBytes ?? 0;
+    }
     return forensicsBytes + quickBytes;
-  }, [activeTab, quickResult, forensicsResult, apps]);
+  }, [activeTab, quickResult, forensicsResult, apps, insightReport]);
 
-  const anyScanning = isQuickScanning || isForensicsScanning || isAppsScanning;
+  const anyScanning =
+    isQuickScanning || isForensicsScanning || isAppsScanning || isInsightsScanning;
 
   const handlePrimaryScan = () => {
     if (activeTab === "quick_clean") handleRunQuickScan();
     else if (activeTab === "apps") handleScanApps();
+    else if (activeTab === "insights") handleRunInsights();
     else handleRunForensics();
   };
 
@@ -523,6 +633,19 @@ export function App() {
               }}
               onRunScan={handleRunQuickScan}
               onExecuteClean={handleExecuteQuickClean}
+            />
+          )}
+
+          {activeTab === "insights" && (
+            <InsightsView
+              report={insightReport}
+              isScanning={isInsightsScanning}
+              permanentShred={permanentShred}
+              applyingIds={applyingInsightIds}
+              onRun={handleRunInsights}
+              onApply={handleApplyInsight}
+              onApplyAll={handleApplyAllInsights}
+              onReveal={handleReveal}
             />
           )}
 

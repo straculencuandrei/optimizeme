@@ -8,6 +8,7 @@ import {
   Flame,
   Trash2,
   Activity,
+  Lightbulb,
 } from "lucide-react";
 import { NavTab } from "../types/forensics";
 import { formatBytes } from "../utils/format";
@@ -33,6 +34,12 @@ const NAV_ITEMS: {
     label: "Quick Clean",
     subtitle: "System & browser hygiene",
     icon: Sparkles,
+  },
+  {
+    id: "insights",
+    label: "Insights",
+    subtitle: "Smart recommendations",
+    icon: Lightbulb,
   },
   {
     id: "forensics",

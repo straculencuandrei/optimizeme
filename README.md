@@ -34,6 +34,23 @@ OptimizeMe combines **quick system hygiene** with **deep storage forensics**:
 
 ## Feature Overview
 
+### Smart Recommendations (Insights)
+
+A local "reasoning" engine that turns the machine's own activity data into plain-language
+suggestions — no cloud, no external model. It weighs file size, age, type and location, Windows
+**UserAssist** launch counts, **Prefetch** run history, and installed-app registry state, then ranks
+every finding into three buckets, each with the concrete reasons behind it:
+
+| Disposition | Meaning | Example reason |
+| --- | --- | --- |
+| **Recommended to remove** | High confidence it's safe and beneficial | *"Sits in Downloads, a folder meant to be cleared out. Last opened 1 year, 4 months ago."* |
+| **Worth a second look** | Needs a human decision | *"32 GB installed, launched only 3 times in total."* |
+| **Keep** | Still in active use — leave it alone | *"Last launched 2 days ago — you still use this."* |
+
+Every recommendation shows its **confidence (0–100%)** and the exact signals that produced it, so the
+reasoning is fully auditable. Apply items one at a time or hit **Apply all recommended**; the engine
+batches deletions, junk cleanup, and stale-registry removal behind the existing safety model.
+
 ### Quick Clean — standard hygiene
 
 One-click detection and cleanup, grouped into reviewable categories with exact byte counts:
@@ -186,6 +203,7 @@ optimizeme/
 │       ├── QuickCleanView.tsx   # category checkboxes & cleanup execution
 │       ├── ForensicsView.tsx    # live sortable deep-scan table, breakdown bar, bulk actions
 │       ├── AppsTrackerView.tsx  # installed / orphaned app analysis & cleanup
+│       ├── InsightsView.tsx     # smart recommendations (remove / review / keep)
 │       ├── WhitelistView.tsx    # ignored files & folders
 │       └── QuickLookModal.tsx   # per-file preview
 └── src-tauri/                   # Rust backend (Tauri v2)
@@ -194,6 +212,7 @@ optimizeme/
         ├── models.rs            # serialised DTOs (serde camelCase)
         ├── forensics.rs         # deep scanner + installed-app engine + orphan cleanup
         ├── os_metadata.rs       # UserAssist / Prefetch / Recent signals, timestamps, scoring
+        ├── insights.rs          # local recommendation engine (scoring + plain-language reasons)
         ├── mft.rs               # optional WizTree MFT turbo-scan integration
         ├── quick_clean.rs       # junk scanners & purge engine
         └── actions.rs           # reveal / preview / trash / shred / whitelist persistence
@@ -219,6 +238,7 @@ optimizeme/
 | `scan_installed_apps_cmd` | Filesystem + registry + launch-history app analysis |
 | `cleanup_orphaned_apps_cmd` | Delete stale registry entries for already-uninstalled apps |
 | `wiztree_status_cmd` / `run_turbo_scan_cmd` | Optional WizTree MFT turbo scan |
+| `generate_insights_cmd` | Local recommendation engine (remove / review / keep, with reasons) |
 | `reveal_in_explorer_cmd` / `open_with_default_app_cmd` | Safe navigation |
 | `quick_preview_cmd` | Metadata + text-snippet preview |
 | `delete_files_cmd` | Recycle Bin move or permanent shred |

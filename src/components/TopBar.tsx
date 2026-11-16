@@ -18,6 +18,10 @@ const TAB_META: Record<NavTab, { title: string; subtitle: string }> = {
     title: "Quick System Hygiene",
     subtitle: "Purge OS temp files, browser caches, logs, and trash without touching logins.",
   },
+  insights: {
+    title: "Smart Recommendations",
+    subtitle: "Reasoned suggestions from your usage data — what to remove and what to keep, and why.",
+  },
   forensics: {
     title: "Deep Storage Forensics",
     subtitle: "Uncover massive, stale, and 'Download & Forget' files ranked by Space-Time Impact.",
@@ -90,6 +94,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                   ? "Scan Hygiene"
                   : activeTab === "apps"
                   ? "Scan Apps"
+                  : activeTab === "insights"
+                  ? "Analyze"
                   : "Run Forensics"}
               </button>
             )

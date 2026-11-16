@@ -157,7 +157,41 @@ export interface DefaultScanTarget {
   exists: boolean;
 }
 
-export type NavTab = "quick_clean" | "forensics" | "apps" | "whitelist";
+export type NavTab = "quick_clean" | "forensics" | "apps" | "whitelist" | "insights";
 export type StalePresetDays = 0 | 30 | 180 | 365 | 730;
 export type SortField = "impact" | "size" | "unused" | "name";
 export type SortDirection = "desc" | "asc";
+
+export type InsightKind = "junk_category" | "file" | "app";
+export type InsightDisposition = "remove" | "review" | "keep";
+export type InsightAction =
+  | "clean_junk"
+  | "delete_file"
+  | "remove_registry_entry"
+  | "reveal"
+  | "none";
+
+export interface Insight {
+  id: string;
+  kind: InsightKind;
+  title: string;
+  subtitle: string;
+  sizeBytes: number;
+  confidence: number;
+  disposition: InsightDisposition;
+  reasons: string[];
+  actionLabel: string;
+  action: InsightAction;
+  path: string | null;
+  categoryId: string | null;
+  registryPath: string | null;
+}
+
+export interface InsightReport {
+  totalReclaimableBytes: number;
+  removeCount: number;
+  reviewCount: number;
+  keepCount: number;
+  generatedAt: number;
+  insights: Insight[];
+}

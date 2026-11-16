@@ -11,6 +11,7 @@ import {
   FilePreviewInfo,
   ForensicsBatchEvent,
   ForensicsScanResult,
+  InsightReport,
   QuickCleanScanResult,
   ScanProgressEvent,
   WhitelistConfig,
@@ -50,6 +51,8 @@ export const api = {
       root,
       minSizeBytes,
     }),
+
+  generateInsights: () => invoke<InsightReport>("generate_insights_cmd"),
 
   revealInExplorer: (path: string) =>
     invoke<void>("reveal_in_explorer_cmd", { path }),

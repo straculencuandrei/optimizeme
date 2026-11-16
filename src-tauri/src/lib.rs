@@ -1,5 +1,6 @@
 mod actions;
 mod forensics;
+mod insights;
 mod mft;
 mod models;
 mod os_metadata;
@@ -13,10 +14,11 @@ use crate::forensics::{
     cleanup_orphaned_apps, get_default_scan_targets, run_forensics_scan, run_wiztree_turbo_scan,
     scan_installed_apps,
 };
+use crate::insights::generate_insights;
 use crate::models::{
     AppCleanupResult, AppState, AppUsageRecord, CleanExecutionResult, CleanRequestItem,
-    DefaultScanTarget, DeleteResult, FilePreviewInfo, ForensicsScanResult, QuickCleanScanResult,
-    WhitelistConfig,
+    DefaultScanTarget, DeleteResult, FilePreviewInfo, ForensicsScanResult, InsightReport,
+    QuickCleanScanResult, WhitelistConfig,
 };
 use crate::quick_clean::{execute_quick_clean, scan_quick_clean};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -129,6 +131,21 @@ async fn run_turbo_scan_cmd(
 }
 
 #[tauri::command]
+async fn generate_insights_cmd(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<InsightReport, String> {
+    let whitelist = state
+        .whitelist
+        .lock()
+        .map_err(|_| "State lock error".to_string())?
+        .clone();
+    tokio::task::spawn_blocking(move || generate_insights(&app, whitelist))
+        .await
+        .map_err(|e| format!("Insights task failed: {}", e))
+}
+
+#[tauri::command]
 fn reveal_in_explorer_cmd(path: String) -> Result<(), String> {
     reveal_in_explorer(&path)
 }
@@ -231,6 +248,7 @@ pub fn run() {
             cleanup_orphaned_apps_cmd,
             wiztree_status_cmd,
             run_turbo_scan_cmd,
+            generate_insights_cmd,
             reveal_in_explorer_cmd,
             open_with_default_app_cmd,
             quick_preview_cmd,

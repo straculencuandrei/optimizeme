@@ -168,6 +168,63 @@ pub struct AppCleanupResult {
     pub failed: Vec<FailedAction>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum InsightKind {
+    JunkCategory,
+    File,
+    App,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum InsightDisposition {
+    Remove,
+    Review,
+    Keep,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum InsightAction {
+    CleanJunk,
+    DeleteFile,
+    RemoveRegistryEntry,
+    Reveal,
+    None,
+}
+
+/// A single machine-reasoned recommendation with human-readable justification.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Insight {
+    pub id: String,
+    pub kind: InsightKind,
+    pub title: String,
+    pub subtitle: String,
+    pub size_bytes: u64,
+    /// 0-100 confidence that the recommended action is both beneficial and safe.
+    pub confidence: u8,
+    pub disposition: InsightDisposition,
+    pub reasons: Vec<String>,
+    pub action_label: String,
+    pub action: InsightAction,
+    pub path: Option<String>,
+    pub category_id: Option<String>,
+    pub registry_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightReport {
+    pub total_reclaimable_bytes: u64,
+    pub remove_count: usize,
+    pub review_count: usize,
+    pub keep_count: usize,
+    pub generated_at: i64,
+    pub insights: Vec<Insight>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteResult {
