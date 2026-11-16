@@ -193,14 +193,22 @@ fn app_insight(app: &AppUsageRecord) -> Option<Insight> {
             )
         }
         AppInstallStatus::Installed if app.is_bloated_unused => {
-            reasons.push(format!("{} installed on disk.", human_size(app.estimated_size_bytes)));
-            reasons.push(format!("{}.", app.relative_last_used));
+            reasons.push(format!(
+                "{} installed on disk.",
+                human_size(app.estimated_size_bytes)
+            ));
+            if app.last_launched_at.is_some() {
+                reasons.push(format!("{}.", app.relative_last_used));
+            }
             match app.launch_count {
                 Some(n) if n > 0 => {
                     reasons.push(format!("Launched only {} time(s) in total.", n));
                 }
-                Some(_) => reasons.push("No recorded launches since install.".to_string()),
-                None => reasons.push("No launch history recorded at all.".to_string()),
+                _ => {
+                    if app.last_launched_at.is_none() {
+                        reasons.push("No launch history was recorded for this app.".to_string());
+                    }
+                }
             }
             (
                 InsightDisposition::Review,

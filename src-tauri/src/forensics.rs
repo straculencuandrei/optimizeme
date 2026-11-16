@@ -628,6 +628,63 @@ fn clean_display_icon(raw: &str) -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
+fn is_generic_root(path: &Path) -> bool {
+    let key = normalize_path_key(path);
+    let trimmed = key.trim_end_matches('\\');
+    // Drive root, e.g. "c:" (normalized form of "C:\").
+    if trimmed.len() == 2 && trimmed.as_bytes().get(1) == Some(&b':') {
+        return true;
+    }
+    if trimmed.ends_with(":\\") {
+        return true;
+    }
+    // Shared roots that must never be treated as a single app's install directory.
+    if let Some((_drive, leaf)) = trimmed.split_once(":\\") {
+        return matches!(
+            leaf,
+            "program files"
+                | "program files (x86)"
+                | "programdata"
+                | "windows"
+                | "users"
+                | "recovery"
+                | "system volume information"
+        );
+    }
+    false
+}
+
+/// Best-effort extraction of an executable path from an UninstallString such as
+/// `"C:\App\unins000.exe" /S` or `C:\App\uninstall.exe`.
+#[cfg(target_os = "windows")]
+fn exe_from_command(cmd: &str) -> Option<PathBuf> {
+    let trimmed = cmd.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lower = trimmed.to_lowercase();
+    let idx = lower.find(".exe")?;
+    let end = idx + 4;
+    let prefix = &trimmed[..end];
+    let start = prefix.rfind('"').map(|i| i + 1).unwrap_or(0);
+    let candidate = prefix[start..].trim().trim_matches('"');
+    if candidate.is_empty() {
+        return None;
+    }
+    let p = PathBuf::from(expand_env_vars(candidate));
+    if p.exists()
+        && p.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("exe"))
+            .unwrap_or(false)
+    {
+        Some(p)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn env_dir(var: &str) -> Option<PathBuf> {
     std::env::var(var)
         .ok()
@@ -906,8 +963,18 @@ fn scan_installed_apps_windows(
                     let publisher: String = app_key
                         .get_value("Publisher")
                         .unwrap_or_else(|_| "Unknown Publisher".to_string());
-                    let install_location: String =
+                    let raw_location: String =
                         clean_path(app_key.get_value("InstallLocation").unwrap_or_default());
+                    // Some installers write a shared root (e.g. "C:\Program Files\") as their
+                    // InstallLocation. Treat those as "no specific location" so we never measure
+                    // or reveal the whole Program Files tree for a single app.
+                    let install_location = if raw_location.is_empty()
+                        || is_generic_root(Path::new(&raw_location))
+                    {
+                        String::new()
+                    } else {
+                        raw_location
+                    };
                     let display_icon_raw: String = app_key.get_value("DisplayIcon").unwrap_or_default();
                     let display_icon_exe = clean_display_icon(&display_icon_raw);
                     let uninstall_string: String =
@@ -935,54 +1002,86 @@ fn scan_installed_apps_windows(
 
     for reg in reg_apps {
         enum Verdict {
-            Alive(PathBuf),
+            Alive {
+                dir: Option<PathBuf>,
+                exe: Option<PathBuf>,
+            },
             Orphaned,
             Unknown,
         }
 
-        let verdict = if !reg.install_location.is_empty() {
-            let loc = PathBuf::from(&reg.install_location);
-            if loc.exists() {
-                Verdict::Alive(loc)
-            } else {
-                // Registry still lists a path that no longer exists → already uninstalled.
-                Verdict::Orphaned
+        let loc = if reg.install_location.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(&reg.install_location))
+        };
+        let icon = reg.display_icon_exe.as_ref().map(PathBuf::from);
+        let unins_exe = exe_from_command(&reg.uninstall_string);
+
+        // Only accept a *specific* folder as the app's install directory; shared roots such as
+        // "C:\Program Files" are rejected so we never measure or reveal the whole tree.
+        let specific_dir = |p: &Path| -> Option<PathBuf> {
+            p.parent()
+                .map(|d| d.to_path_buf())
+                .filter(|d| !is_generic_root(d))
+        };
+
+        let verdict = if let Some(loc) = loc.as_ref().filter(|p| p.exists()) {
+            Verdict::Alive {
+                dir: Some(loc.clone()),
+                exe: None,
             }
-        } else if let Some(icon) = &reg.display_icon_exe {
-            let p = PathBuf::from(icon);
-            if p.exists() {
-                let dir = p.parent().map(|d| d.to_path_buf()).unwrap_or_else(|| p.clone());
-                Verdict::Alive(dir)
-            } else {
-                Verdict::Orphaned
+        } else if let Some(icon) = icon.as_ref().filter(|p| p.exists()) {
+            Verdict::Alive {
+                dir: specific_dir(icon),
+                exe: Some(icon.clone()),
             }
+        } else if let Some(exe) = unins_exe.as_ref().filter(|p| p.exists()) {
+            Verdict::Alive {
+                dir: specific_dir(exe),
+                exe: Some(exe.clone()),
+            }
+        } else if loc.is_some() || icon.is_some() || unins_exe.is_some() {
+            // Every path the registry referenced is gone → already uninstalled.
+            Verdict::Orphaned
         } else {
             Verdict::Unknown
         };
 
         match verdict {
-            Verdict::Alive(dir) => {
-                let norm = normalize_path_key(&dir);
-                let dedup_key = norm.clone();
-                if !seen.insert(dedup_key) {
+            Verdict::Alive { dir, exe } => {
+                let dedup_key = match &dir {
+                    Some(d) => normalize_path_key(d),
+                    None => format!("reg:{}", reg.registry_path),
+                };
+                if !seen.insert(dedup_key.clone()) {
                     continue;
                 }
-                known_dirs.insert(norm);
+                if dir.is_some() {
+                    known_dirs.insert(dedup_key);
+                }
+
                 let dir_name = dir
-                    .file_name()
+                    .as_ref()
+                    .and_then(|d| d.file_name())
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_default();
-                let exes = collect_executables(&dir, 2);
-                let primary = pick_primary_exe(&exes, &dir_name);
-                let status = if primary.is_some() {
-                    AppInstallStatus::Installed
-                } else {
-                    AppInstallStatus::Broken
+                let exes = dir
+                    .as_ref()
+                    .map(|d| collect_executables(d, 2))
+                    .unwrap_or_default();
+                let primary = exe.or_else(|| pick_primary_exe(&exes, &dir_name));
+
+                let status = match &dir {
+                    Some(_) if primary.is_some() => AppInstallStatus::Installed,
+                    Some(_) => AppInstallStatus::Broken,
+                    None => AppInstallStatus::Unknown,
                 };
+
                 tasks.push(BuildTask {
                     name: reg.name,
                     publisher: reg.publisher,
-                    dir: Some(dir),
+                    dir,
                     primary_exe: primary,
                     estimated_size_kb: reg.estimated_size_kb,
                     status,
@@ -1422,5 +1521,20 @@ mod tests {
         let deduped = deduplicate_roots(&roots);
         assert_eq!(deduped.len(), 1);
         assert_eq!(deduped[0], cwd);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_generic_root_detection() {
+        assert!(is_generic_root(Path::new("C:\\")));
+        assert!(is_generic_root(Path::new("C:\\Program Files")));
+        assert!(is_generic_root(Path::new("C:\\Program Files\\")));
+        assert!(is_generic_root(Path::new("D:\\Program Files (x86)")));
+        assert!(is_generic_root(Path::new("C:\\ProgramData")));
+        assert!(is_generic_root(Path::new("C:\\Users")));
+        assert!(!is_generic_root(Path::new("C:\\Program Files\\Epic Games")));
+        assert!(!is_generic_root(Path::new(
+            "C:\\Program Files\\Epic Games\\Launcher"
+        )));
     }
 }

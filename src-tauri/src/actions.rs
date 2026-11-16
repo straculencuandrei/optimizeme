@@ -6,17 +6,34 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::process::Command;
 
+/// Strips surrounding quotes and trailing path separators (keeping drive roots like `C:\`).
+fn normalize_reveal_path(path: &str) -> String {
+    let mut p = path.trim().trim_matches('"').to_string();
+    while p.len() > 3 && (p.ends_with('\\') || p.ends_with('/')) {
+        p.pop();
+    }
+    p
+}
+
 pub fn reveal_in_explorer(path: &str) -> Result<(), String> {
-    let p = Path::new(path);
+    let target = normalize_reveal_path(path);
+    let p = Path::new(&target);
     if !p.exists() {
         return Err(format!("Path does not exist: {}", path));
     }
 
     #[cfg(target_os = "windows")]
     {
-        Command::new("explorer")
-            .args(["/select,", path])
-            .spawn()
+        // `/select,` selects a file inside its parent folder and opens that folder. For a
+        // directory we open the directory itself so the user lands directly inside it, which
+        // avoids Explorer wandering off to an unrelated folder.
+        let mut cmd = Command::new("explorer");
+        if p.is_dir() {
+            cmd.arg(&target);
+        } else {
+            cmd.arg(format!("/select,{}", target));
+        }
+        cmd.spawn()
             .map_err(|e| format!("Failed to launch Explorer: {}", e))?;
         return Ok(());
     }
@@ -24,7 +41,7 @@ pub fn reveal_in_explorer(path: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         Command::new("open")
-            .args(["-R", path])
+            .args(["-R", target.as_str()])
             .spawn()
             .map_err(|e| format!("Failed to reveal in Finder: {}", e))?;
         return Ok(());
@@ -32,13 +49,9 @@ pub fn reveal_in_explorer(path: &str) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        let target = if p.is_dir() {
-            p
-        } else {
-            p.parent().unwrap_or(p)
-        };
+        let open_target = if p.is_dir() { p } else { p.parent().unwrap_or(p) };
         Command::new("xdg-open")
-            .arg(target)
+            .arg(open_target)
             .spawn()
             .map_err(|e| format!("Failed to open file manager: {}", e))?;
         return Ok(());
@@ -209,4 +222,31 @@ pub fn save_whitelist(path: &Path, cfg: &WhitelistConfig) -> Result<(), String> 
     }
     let json = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
     fs::write(path, json).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_reveal_path() {
+        // Drive roots are preserved.
+        assert_eq!(normalize_reveal_path("C:\\"), "C:\\");
+        assert_eq!(normalize_reveal_path("C:/"), "C:/");
+        // Trailing separators are stripped so Explorer's /select, works.
+        assert_eq!(
+            normalize_reveal_path("C:\\Program Files\\"),
+            "C:\\Program Files"
+        );
+        assert_eq!(
+            normalize_reveal_path("C:\\Program Files\\Epic Games\\Launcher\\"),
+            "C:\\Program Files\\Epic Games\\Launcher"
+        );
+        // Surrounding quotes and whitespace are trimmed.
+        assert_eq!(
+            normalize_reveal_path("\"C:\\Program Files\\\\\""),
+            "C:\\Program Files"
+        );
+        assert_eq!(normalize_reveal_path("  /home/user/  "), "/home/user");
+    }
 }
