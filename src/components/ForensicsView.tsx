@@ -354,7 +354,7 @@ export const ForensicsView: React.FC<ForensicsViewProps> = ({
                 className="px-2.5 py-1 rounded-lg text-[12px] font-semibold bg-violet-500/20 border border-violet-500/40 text-violet-200 hover:bg-violet-500/30 disabled:opacity-40 cursor-pointer"
                 title={`Whole-drive MFT scan via WizTree (${wiztreePath})`}
               >
-                ⚡ MFT Turbo Scan {turboRoot}
+                MFT Turbo Scan {turboRoot}
               </button>
             )}
           </div>

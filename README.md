@@ -34,7 +34,7 @@ OptimizeMe combines **quick system hygiene** with **deep storage forensics**:
 
 ## Feature Overview
 
-### 🧹 Quick Clean — standard hygiene
+### Quick Clean — standard hygiene
 
 One-click detection and cleanup, grouped into reviewable categories with exact byte counts:
 
@@ -49,7 +49,7 @@ One-click detection and cleanup, grouped into reviewable categories with exact b
 
 Every category is a checkbox with its own byte size, so you review before you delete.
 
-### 🔍 Deep Storage Forensics — the core feature
+### Deep Storage Forensics — the core feature
 
 Point it at as many folders as you like (user directories, Program Files, whole drives — anything).
 The engine walks them in parallel, streams results into a live sortable table, and surfaces the files
@@ -77,7 +77,7 @@ OptimizeMe combines multiple OS-level signals:
 
 Each row tells you which signal produced its timestamp, so you always know how trustworthy it is.
 
-### 📦 Unused Applications & Binaries Tracker
+### Unused Applications & Binaries Tracker
 
 This module was rebuilt to stop "copying Windows' homework":
 
@@ -99,10 +99,10 @@ This module was rebuilt to stop "copying Windows' homework":
   *"Remove all N stale entries"* button). This deletes only the stale **registry key**; the files are
   already gone, so nothing of value is touched. Missing paths never crash the scan.
 
-### ⚡ Optional WizTree / MFT turbo scan
+### Optional WizTree / MFT Turbo Scan
 
 WizTree reads the **NTFS Master File Table** directly, so it can enumerate an entire drive in seconds
-instead of walking the tree. When WizTree is detected, an **⚡ MFT Turbo Scan** button appears and uses
+instead of walking the tree. When WizTree is detected, an **MFT Turbo Scan** button appears and uses
 that export, merging rows with the same UserAssist/Prefetch launch signals.
 
 - Auto-detected; nothing to configure.
@@ -113,7 +113,7 @@ that export, merging rows with the same UserAssist/Prefetch launch signals.
 > offers no speed advantage here. The meaningful improvement is the MFT approach, which is what
 > WizTree provides.
 
-### 🛡️ Safe actions & file triage
+### Safe Actions & File Triage
 
 - **Quick Look** preview — metadata, MIME hint, SHA-256 prefix, and a text snippet for text files.
 - **Reveal in Explorer / Finder** before deleting anything.
