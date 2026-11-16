@@ -1,0 +1,32 @@
+{
+  "name": "optimizeme",
+  "version": "0.1.0",
+  "description": "High-performance system cleaner and deep storage forensics utility",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "start": "tauri dev",
+    "build": "tsc && vite build",
+    "check": "tsc --noEmit && cargo test --manifest-path src-tauri/Cargo.toml --lib",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.5",
+    "@tauri-apps/plugin-dialog": "^2.8.4",
+    "framer-motion": "^14.14.0",
+    "lucide-react": "^1.73.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@tauri-apps/cli": "^2.12.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  }
+}
