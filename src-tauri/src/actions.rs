@@ -15,6 +15,28 @@ fn normalize_reveal_path(path: &str) -> String {
     p
 }
 
+#[cfg(any(target_os = "windows", test))]
+fn to_windows_explorer_path(path: &str) -> String {
+    let normalized = normalize_reveal_path(path).replace('/', "\\");
+    if let Some(unc) = normalized.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{}", unc)
+    } else if let Some(stripped) = normalized.strip_prefix(r"\\?\") {
+        stripped.to_string()
+    } else {
+        normalized
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_explorer_raw_arg(path: &str, is_dir: bool) -> String {
+    let win_target = to_windows_explorer_path(path);
+    if is_dir {
+        format!("\"{}\"", win_target)
+    } else {
+        format!("/select,\"{}\"", win_target)
+    }
+}
+
 pub fn reveal_in_explorer(path: &str) -> Result<(), String> {
     let target = normalize_reveal_path(path);
     let p = Path::new(&target);
@@ -24,19 +46,14 @@ pub fn reveal_in_explorer(path: &str) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        // `/select,` selects a file inside its parent folder and opens that folder. For a
-        // directory we open the directory itself so the user lands directly inside it, which
-        // avoids Explorer wandering off to an unrelated folder.
-        let mut cmd = Command::new("explorer");
-        if p.is_dir() {
-            cmd.arg(&target);
-        } else {
-            // Quote the path inside the /select, switch. Without the inner quotes, paths that
-            // contain spaces (e.g. "Program Files (x86)") are mis-parsed and Explorer silently
-            // falls back to a default folder such as Documents.
-            cmd.arg(format!("/select,\"{}\"", target));
-        }
-        cmd.spawn()
+        use std::os::windows::process::CommandExt;
+
+        // Pass the raw command line to Explorer without Rust's Command::arg escaping inner quotes
+        // (`\"`), which Explorer cannot parse and silently falls back to Documents on.
+        let raw = windows_explorer_raw_arg(&target, p.is_dir());
+        Command::new("explorer")
+            .raw_arg(raw)
+            .spawn()
             .map_err(|e| format!("Failed to launch Explorer: {}", e))?;
         return Ok(());
     }
@@ -251,5 +268,29 @@ mod tests {
             "C:\\Program Files"
         );
         assert_eq!(normalize_reveal_path("  /home/user/  "), "/home/user");
+    }
+
+    #[test]
+    fn test_windows_explorer_raw_arg() {
+        assert_eq!(
+            windows_explorer_raw_arg(r"C:\Program Files (x86)\Waves\Applications V17\Bass Fingers.exe", false),
+            r#"/select,"C:\Program Files (x86)\Waves\Applications V17\Bass Fingers.exe""#
+        );
+        assert_eq!(
+            windows_explorer_raw_arg(r"C:\Program Files\NFS\", true),
+            r#""C:\Program Files\NFS""#
+        );
+        assert_eq!(
+            windows_explorer_raw_arg("C:/Program Files/NFS/nfsw.exe", false),
+            r#"/select,"C:\Program Files\NFS\nfsw.exe""#
+        );
+        assert_eq!(
+            windows_explorer_raw_arg(r"\\?\C:\Program Files\NFS\nfsw.exe", false),
+            r#"/select,"C:\Program Files\NFS\nfsw.exe""#
+        );
+        assert_eq!(
+            windows_explorer_raw_arg(r"\\?\UNC\server\share\app.exe", false),
+            r#"/select,"\\server\share\app.exe""#
+        );
     }
 }
